@@ -27,9 +27,7 @@ class TimeEvolution:
 		self.n_batches = int(n_batches)
 		self.step_size = T/(self.n_batches-1)
 		self.batch_size = int(np.floor(self.step_size/self.dt))
-		self.initial_state = np.zeros(self.size) + np.random.normal(size=self.size)/1e4
-		self.initial_state[:self.X] += phi_init
-		self.initial_state[self.X:] += f_init 
+		self._uniform_init(phi_init, f_init)
 		
 	def compute_Turing(self): 
 		phi = np.mean(self.y[-2, :self.X])
@@ -53,11 +51,7 @@ class TimeEvolution:
 
 	def evolve(self, verbose=False): 
 		self.y  = np.zeros((self.n_batches, self.size))
-		k_array = np.array([min(i, self.X-i) for i in range(self.X)])*np.pi*2/self.X
-		self.ksq = k_array*k_array
-		kmax = np.pi
-		self.kmax_half_mask = (k_array < kmax/2)
-		self.kmax_two_thirds_mask = (k_array < kmax*2/3)
+		self._make_kgrid() 
 
 		small_batch = self.batch_size
 		while small_batch > 1000:
@@ -98,6 +92,10 @@ class TimeEvolution:
 		plt.close() 
 
 
+	def _uniform_init(self, phi_init, f_init):
+		self.initial_state = np.zeros(self.size) + np.random.normal(size=self.size)/1e4
+		self.initial_state[:self.X] += phi_init
+		self.initial_state[self.X:] += f_init  
 
 	def _hill_prime(self, f): 
 		x = f/self.f0 
@@ -132,6 +130,15 @@ class TimeEvolution:
 		delta_f += np.real(mkl_fft.ifft(-self.D2*self.ksq*f_k))
 
 		return np.concatenate((delta_phi, delta_f))
+
+
+	def _make_kgrid(self):
+		k_array = np.array([min(i, self.X-i) for i in range(self.X)])*np.pi*2/self.X
+		self.ksq = k_array*k_array
+		kmax = np.pi
+		self.kmax_half_mask = (k_array < kmax/2)
+		self.kmax_two_thirds_mask = (k_array < kmax*2/3) 
+
 
 		
 
