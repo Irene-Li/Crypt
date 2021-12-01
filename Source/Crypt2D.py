@@ -8,9 +8,11 @@ import mkl_fft
 
 class StoEvolution2D(TimeEvolution): 
 
-	def __init__(self, epsilon=None, D1=None, D2=None, l=None, g=None, k=None, a=None, v0=None, phi0=None, f0=None, n=None): 
-		super().__init__(D1, D2, l, g, k, a, v0, phi0, f0, n) 
+	def __init__(self, epsilon=None, D1=None, D2=None, l=None, g=None, k=None, a=None, v0=None, phi0=None, n=None): 
+		super().__init__(D1, D2, l, g, k, a, v0, phi0, n) 
 		self.epsilon = epsilon 
+
+
 
 	def evolve(self, verbose=False): 
 		self.y  = np.empty((self.n_batches, 2, self.X, self.X))
@@ -28,6 +30,16 @@ class StoEvolution2D(TimeEvolution):
 			delta = self._delta_y(y)*self.dt 
 			noisy_delta = self._noisy_delta() 
 			y += delta + noisy_delta 
+
+
+	def _collect_params(self): 
+		params = super()._collect_params()
+		params['epsilon'] = self.epsilon 
+		return params 
+
+	def _load_params(self, params):
+		super()._load_params(params)
+		self.epsilon = params['epsilon']
 
 
 	def _uniform_init(self, phi_init, f_init):

@@ -7,7 +7,7 @@ import mkl_fft
 
 class TimeEvolution: 
 
-	def __init__(self, D1=None, D2=None, l=None, g=None, k=None, a=None, v0=None, phi0=None, f0=None, n=None):
+	def __init__(self, D1=None, D2=None, l=None, g=None, k=None, a=None, v0=None, phi0=None, n=None):
 		self.D1 = D1 
 		self.D2 = D2 
 		self.l = l   
@@ -15,7 +15,6 @@ class TimeEvolution:
 		self.k = k   
 		self.v0 = v0  
 		self.phi0 = phi0 
-		self.f0 = f0   
 		self.n = n
 		self.a = a
 
@@ -28,6 +27,62 @@ class TimeEvolution:
 		self.step_size = T/(self.n_batches-1)
 		self.batch_size = int(np.floor(self.step_size/self.dt))
 		self._uniform_init(phi_init, f_init)
+
+
+	def save(self, label): 
+		np.save("{}_data.npy".format(label), self.y)
+
+		params = self._collect_params() 
+
+		with open('{}_params.json'.format(label), 'w') as f:
+			json.dump(params, f)
+
+	def _collect_params(self):
+		params = {
+			'T': self.T,
+			'dt': self.dt,
+			'X': self.X,
+			'size': self.size, 
+			'n_batches': self.n_batches,
+			'step_size': self.step_size,
+			'D1': self.D1,
+			'D2': self.D2,
+			'l': self.l,
+			'g': self.g, 
+			'k': self.k, 
+			'v0': self.v0, 
+			'phi0': self.phi0, 
+			'n': self.n, 
+			'a': self.a 
+		}
+		return params  
+
+	def load(self, label):
+		self.y = np.load('{}_data.npy'.format(label))
+
+		with open('{}_params.json'.format(label), 'r') as f:
+			params = json.load(f)
+
+		self._load_params(params) 
+
+	def _load_params(self, params):
+		self.D1 = params['D1']
+		self.D2 = params['D2']
+		self.l = params['l']
+		self.g = param['g']
+		self.k = param['k']
+		self.v0 = param['v0']
+		self.phi0 = param['phi0']
+		self.n = param['n']
+		self.a = param['a']
+
+		self.X = params['X']
+		self.T = params['T']
+		self.dt = params['dt']
+		self.size = params['size']
+		self.n_batches = params['n_batches']
+		self.step_size = params['step_size']  
+
 		
 	def compute_Turing(self): 
 		phi = np.mean(self.y[-2, :self.X])
@@ -72,23 +127,27 @@ class TimeEvolution:
 					n += 1
 				y = r.integrate(r.t+self.dt*small_batch)
 
-	def plot_phi_evol(self, label): 
+	def plot_phi_evol(self, label, show=False): 
 		plt.imshow(self.y[:, :self.X], origin='lower')
 		plt.xlabel('x')
 		plt.ylabel('t')
 		plt.title('phi')
 		plt.colorbar() 
 		plt.savefig('{}_phi.pdf'.format(label))
+		if show: 
+			plt.show() 
 		plt.close() 
 
 
-	def plot_f_evol(self, label): 
+	def plot_f_evol(self, label, show=False): 
 		plt.imshow(self.y[:, self.X:], origin='lower')
 		plt.xlabel('x')
 		plt.ylabel('t')
 		plt.title('f')
 		plt.colorbar() 
 		plt.savefig('{}_f.pdf'.format(label))
+		if show: 
+			plt.show() 
 		plt.close() 
 
 
@@ -98,12 +157,12 @@ class TimeEvolution:
 		self.initial_state[self.X:] += f_init  
 
 	def _hill_prime(self, f): 
-		x = f/self.f0 
+		x = f
 		xn = x**self.n 
-		return (1/(1+xn)**2)*(x**(self.n-1))*self.n/self.f0 
+		return (1/(1+xn)**2)*(x**(self.n-1))*self.n
 
 	def _hill_function(self, f): 
-		x = (f/self.f0)**self.n 
+		x = (f)**self.n 
 		return x/(1+x)
 
 	def _nu(self, phi): 
@@ -138,6 +197,7 @@ class TimeEvolution:
 		kmax = np.pi
 		self.kmax_half_mask = (k_array < kmax/2)
 		self.kmax_two_thirds_mask = (k_array < kmax*2/3) 
+
 
 
 		
