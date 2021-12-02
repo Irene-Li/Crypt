@@ -27,7 +27,7 @@ f_init = 1
 T = 3e5
 
 for D in [0.01, 0.1, 1, 4, 10]:
-	x in [2, 5, 10]: 
+	for x in [2, 5, 10]: 
 		v0 = x*l 
 		label = 'D={}_v0={}'.format(D, v0)
 
