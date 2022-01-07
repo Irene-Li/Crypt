@@ -7,3 +7,7 @@
 *.json
 *.pdf
 *.pdf
+Source/pseudospectral.html
+Source/pseudospectral.cpython-37m-darwin.so
+Source/pseudospectral.c
+Source/build/temp.macosx-10.7-x86_64-3.7/pseudospectral.o

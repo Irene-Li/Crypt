@@ -123,7 +123,7 @@ class TimeEvolution:
 				if i % int(self.batch_size/small_batch) == 0:
 					self.y[n] = y
 					if verbose:
-						print('iteration: {}	phi mean: {}, f mean: {}'.format(n, np.mean(y[:self.X]), np.mean(y[self.X:])))
+						print('time step: {}	phi mean: {}, f mean: {}'.format(n, np.mean(y[:self.X]), np.mean(y[self.X:])))
 					n += 1
 				y = r.integrate(r.t+self.dt*small_batch)
 
