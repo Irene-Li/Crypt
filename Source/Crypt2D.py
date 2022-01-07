@@ -23,9 +23,6 @@ class StoEvolution2D(TimeEvolution):
 			self.y  = np.empty((self.n_batches, 2, self.X, self.X))
 			self.evolve_python(phi_init, f_init, verbose)
 
-
-	def 
-
 	def evolve_python(self, phi_init, f_init, verbose): 
 		self._make_kgrid() 
 
