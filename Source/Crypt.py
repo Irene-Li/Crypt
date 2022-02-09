@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from scipy.integrate import ode
+from scipy.integrate import ode 
+from scipy.fftpack import rfftfreq 
 import json
 import mkl_fft 
 
@@ -112,20 +113,24 @@ class TimeEvolution:
 		while small_batch > 1000:
 			small_batch /= 10 # decrease the amount of time integration at each step
 
-		r = ode(self._delta_y).set_integrator('lsoda', atol=1e-8, nsteps=small_batch)
-		r.set_initial_value(self.initial_state, 0)
+		r = ode(self._delta_y).set_integrator('lsoda', rtol=1e-5, nsteps=small_batch)
 
+
+		phi_init = self.initial_state[:self.X]
+		f_init = self.initial_state[self.X:]
+		y_k = np.concatenate([mkl_fft.rfft(phi_init), mkl_fft.rfft(f_init)])
+		r.set_initial_value(y_k, 0)
 		n = 0
-		y = self.initial_state
 
 		for i in range(int((self.T/self.dt)/small_batch)):
 			if r.successful():
 				if i % int(self.batch_size/small_batch) == 0:
-					self.y[n] = y
+					self.y[n, :self.X] = np.real(mkl_fft.irfft(y_k[:self.X]))
+					self.y[n, self.X:] = np.real(mkl_fft.irfft(y_k[self.X:]))
 					if verbose:
-						print('time step: {}	phi mean: {}, f mean: {}'.format(n, np.mean(y[:self.X]), np.mean(y[self.X:])))
+						print('time step: {}	phi mean: {}'.format(n, np.real(y_k[0])/self.X))
 					n += 1
-				y = r.integrate(r.t+self.dt*small_batch)
+				y_k = r.integrate(r.t+self.dt*small_batch)
 
 	def plot_phi_evol(self, label, show=False): 
 		plt.imshow(self.y[:, :self.X], origin='lower')
@@ -152,9 +157,9 @@ class TimeEvolution:
 
 
 	def _uniform_init(self, phi_init, f_init):
-		self.initial_state = np.zeros(self.size) + np.random.normal(size=self.size)/1e4
-		self.initial_state[:self.X] += phi_init
-		self.initial_state[self.X:] += f_init  
+		noise1 = np.random.normal(size=self.X)/1e4
+		noise2 = np.random.normal(size=self.X)/1e4
+		self.initial_state = np.concatenate([phi_init+noise1, f_init+noise2])
 
 	def _hill_prime(self, f): 
 		x = f
@@ -170,33 +175,35 @@ class TimeEvolution:
 
 	def _delta_y(self, t, y): 
 
-		phi = y[:self.X]
-		f = y[self.X:]
-		phi_k = mkl_fft.fft(phi)
-		phi_sq_k = mkl_fft.fft(phi*phi)
-		phi_cb_k = mkl_fft.fft(phi*phi*phi)
-		f_k = mkl_fft.fft(f) 
+		phi_k = y[:self.X]
+		f_k = y[self.X:]
+
+		phi = mkl_fft.irfft(phi_k)
+		f = mkl_fft.irfft(f_k)
+		phi_sq_k = mkl_fft.rfft(phi*phi) 
+		phi_cb_k = mkl_fft.rfft(phi*phi*phi)
+		np.putmask(phi_sq_k, self.kmax_two_thirds_mask, 0)
+		np.putmask(phi_cb_k, self.kmax_half_mask, 0)
 
 		h = self._hill_function(f)
 		nu = self._nu(phi)
-		mu = (1./2. + self.a*self.ksq)*phi_k 
-		mu[self.kmax_two_thirds_mask] += -3./2.*phi_sq_k[self.kmax_two_thirds_mask] 
-		mu[self.kmax_half_mask] += phi_cb_k[self.kmax_half_mask] 
+		mu = (1./2. + self.a*self.ksq)*phi_k -(3/2)*phi_sq_k + phi_cb_k
 
-		delta_phi = self.l*(2*h-1)*phi
-		delta_f = -self.g*h*phi + nu - self.k*f 
-		delta_phi += np.real(mkl_fft.ifft(-self.D1*self.ksq*mu))
-		delta_f += np.real(mkl_fft.ifft(-self.D2*self.ksq*f_k))
+		delta_phi = mkl_fft.rfft(self.l*(2*h-1)*phi) -self.D1*self.ksq*mu
+		delta_f = mkl_fft.rfft(-self.g*h*phi + nu) - (self.k+self.D2*self.ksq)*f_k 
 
 		return np.concatenate((delta_phi, delta_f))
 
 
 	def _make_kgrid(self):
-		k_array = np.array([min(i, self.X-i) for i in range(self.X)])*np.pi*2/self.X
+		k_array = rfftfreq(self.X)*np.pi*2
 		self.ksq = k_array*k_array
 		kmax = np.pi
-		self.kmax_half_mask = (k_array < kmax/2)
-		self.kmax_two_thirds_mask = (k_array < kmax*2/3) 
+		self.kmax_half_mask = (k_array >= kmax/2)
+		self.kmax_two_thirds_mask = (k_array >= kmax*2/3) 
+
+
+
 
 
 

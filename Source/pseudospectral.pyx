@@ -3,7 +3,7 @@ import mkl_fft
 cimport numpy as np
 cimport cython
 from cython.view cimport array
-from libc.math cimport sqrt, fmin, M_PI, pow, exp 
+from libc.math cimport sqrt, fmin, M_PI, pow, exp, floor 
 from cython.parallel import prange
 
 @cython.cdivision(True) 
@@ -221,5 +221,114 @@ def evolve_sto_ps2(np.ndarray[np.complex128_t, ndim=2] phi_init, np.ndarray[np.c
 				else: # X-m < m 
 					phi_ptr[index] += phi_factor*(dW_phi_ptr[j*X+X-m]-1j*dW_phi_ptr[j*X+X-m+X/2])
 					f_ptr[index] += f_factor*(dW_f_ptr[j*X+X-m]-1j*dW_f_ptr[j*X+X-m+X/2])
+
+	return y_evol
+
+
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+@cython.cdivision(True)
+def evolve_sto_ps_1d(np.ndarray[np.float64_t, ndim=1] phi_init, np.ndarray[np.float64_t, ndim=1] f_init, params):
+	cdef np.ndarray[np.float64_t, ndim=3] y_evol
+	cdef np.ndarray[np.float64_t, ndim=1, mode='c'] phi, phi_cube, phi_sq
+	cdef np.ndarray[np.float64_t, ndim=1, mode='c'] f, f_x
+	cdef np.ndarray[np.float64_t, ndim=1, mode='c'] phi_x, phi_x_cube, phi_x_sq, phi_nl, f_nl 
+	cdef np.ndarray[np.float64_t, ndim=1, mode='c'] dW_phi, dW_f   
+
+	cdef np.float64_t *phi_ptr, *phi_cube_ptr, *phi_sq_ptr
+	cdef np.float64_t *f_ptr, *phi_nl_ptr, *f_nl_ptr 
+	cdef np.float64_t *dW_phi_ptr, *dW_f_ptr
+
+	cdef Py_ssize_t n, i, j, m, index, batch_size, N=params['n']
+	cdef double D1=params['D1'], D2=params['D2'], epsilon=params['epsilon']
+	cdef double a=params['a'], l=params['l'], g=params['g'], k=params['k'] 
+	cdef double v0=params['v0'], phi0=params['phi0']
+
+	cdef Py_ssize_t X=params['X'], n_batches=params['n_batches']
+	cdef double T=params['T'], dt=params['dt']
+	cdef double kmax_half, kmax_two_thirds, kx, ky, ksq, factor, phi_factor, f_factor 
+	cdef double temp, mu, h, nu 
+
+	kmax_half = M_PI/2.0
+	kmax_two_thirds = M_PI*2.0/3.0
+	factor = M_PI*2.0/X
+
+	phi_x_sq = np.empty((X), dtype='float64')
+	phi_x_cube = np.empty((X), dtype='float64')
+	phi_nl = np.empty((X), dtype='float64')
+	f_nl = np.empty((X), dtype='float64')
+
+	phi = np.ascontiguousarray(phi_init)
+	f = np.ascontiguousarray(f_init)
+
+	nitr = int(T/dt) 
+	batch_size = int(nitr/n_batches)
+	y_evol = np.empty((n_batches, 2, X), dtype='float64')
+
+	n = 0
+	for i in xrange(nitr):
+		phi_x = mkl_fft.irfft(phi)
+		f_x = mkl_fft.irfft(f)
+
+		phi_ptr = &phi_x[0] 
+		f_ptr = &f_x[0]
+		phi_sq_ptr = &phi_x_sq[0]
+		phi_cube_ptr = &phi_x_cube[0]
+		phi_nl_ptr = &phi_nl[0] 
+		f_nl_ptr = &f_nl[0]
+
+		if i % batch_size == 0:
+			for j in xrange(X):
+				y_evol[n, 0, j] = phi_ptr[j]
+				y_evol[n, 1, j] = f_ptr[j]
+			print('iteration: {},  phi mean: {}'.format(n, phi[0]/(X)))
+			n += 1
+
+		for j in prange(X, nogil=True):
+
+			temp = phi_ptr[j]
+			phi_sq_ptr[j] = temp*temp
+			phi_cube_ptr[j]= temp*temp*temp
+
+			h = _hill_function(f_ptr[j], N)
+			nu = _nu(temp, v0, phi0)
+			phi_nl_ptr[j] = l*(2*h-1)*temp
+			f_nl_ptr[j] = -g*h*temp + nu
+
+		phi_cube = mkl_fft.rfft(phi_x_cube)
+		phi_sq = mkl_fft.rfft(phi_x_sq)
+		phi_nl = mkl_fft.rfft(phi_nl)
+		f_nl = mkl_fft.rfft(f_nl)
+		dW_phi = np.random.normal(size=(X))
+		dW_f = np.random.normal(size=(X))
+
+		phi_ptr = &phi[0] 
+		f_ptr = &f[0]
+		phi_sq_ptr = &phi_sq[0]
+		phi_cube_ptr = &phi_cube[0]
+		dW_phi_ptr = &dW_phi[0]
+		dW_f_ptr = &dW_f[0]
+
+		for j in prange(X, nogil=True):
+			kx = floor(j/2)*factor
+			ksq = kx*kx
+			temp = phi_ptr[j]
+			mu = (0.5 + a*ksq)*temp 
+			if (kx<kmax_half): 
+				mu = mu + phi_cube_ptr[j]
+			if (kx<kmax_two_thirds):
+				mu = mu - 1.5*phi_sq_ptr[j]
+
+			phi_ptr[j] += dt*(phi_nl_ptr[j]-D1*ksq*mu) 
+			f_ptr[j] +=  dt*(f_nl_ptr[j]-(D2*ksq+k)*f_ptr[j]) 
+
+			phi_factor = sqrt(X*(l+ksq*D1)*epsilon*dt) # noise prefactor as a result of FT 
+			f_factor = sqrt(X*(g+ksq*D2)*epsilon*dt)
+
+			phi_ptr[j] += phi_factor*dW_phi_ptr[j]
+			f_ptr[j] += f_factor*dW_f_ptr[j]
+
 
 	return y_evol

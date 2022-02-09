@@ -20,14 +20,14 @@ v0 = 10*l
 epsilon = 1e-3
 
 # simulation parameters
-X = 64
+X = 128
 dt = 1e-3
 n_batches = 100
 phi_init = 0.5 
 f_init = 1
 
 
-T = 1e4
+T = 10
 solver = StoEvolution2D(epsilon, D1, D2, l, g, k, a, v0, phi0, n)
 solver.initialise(X, T, dt, n_batches, phi_init, f_init)
 start_time = time.time()
