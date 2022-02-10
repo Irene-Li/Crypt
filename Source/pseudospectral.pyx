@@ -237,9 +237,14 @@ def evolve_sto_ps_1d(np.ndarray[np.float64_t, ndim=1] phi_init, np.ndarray[np.fl
 	cdef np.ndarray[np.float64_t, ndim=1, mode='c'] phi_x, phi_x_cube, phi_x_sq, phi_nl, f_nl 
 	cdef np.ndarray[np.float64_t, ndim=1, mode='c'] dW_phi, dW_f   
 
-	cdef np.float64_t *phi_ptr, *phi_cube_ptr, *phi_sq_ptr
-	cdef np.float64_t *f_ptr, *phi_nl_ptr, *f_nl_ptr 
-	cdef np.float64_t *dW_phi_ptr, *dW_f_ptr
+	cdef double *phi_ptr
+	cdef double *phi_cube_ptr
+	cdef double *phi_sq_ptr
+	cdef double *f_ptr 
+	cdef double *phi_nl_ptr 
+	cdef double *f_nl_ptr 
+	cdef double *dW_phi_ptr 
+	cdef double *dW_f_ptr
 
 	cdef Py_ssize_t n, i, j, m, index, batch_size, N=params['n']
 	cdef double D1=params['D1'], D2=params['D2'], epsilon=params['epsilon']
@@ -310,25 +315,25 @@ def evolve_sto_ps_1d(np.ndarray[np.float64_t, ndim=1] phi_init, np.ndarray[np.fl
 		phi_cube_ptr = &phi_cube[0]
 		dW_phi_ptr = &dW_phi[0]
 		dW_f_ptr = &dW_f[0]
+		phi_nl_ptr = &phi_nl[0] 
+		f_nl_ptr = &f_nl[0]
 
 		for j in prange(X, nogil=True):
 			kx = floor(j/2)*factor
 			ksq = kx*kx
 			temp = phi_ptr[j]
 			mu = (0.5 + a*ksq)*temp 
+
+			phi_factor = sqrt(2*X*(l+ksq*D1)*epsilon*dt) 
+			f_factor = sqrt(2*X*(g+ksq*D2)*epsilon*dt)
+			
 			if (kx<kmax_half): 
 				mu = mu + phi_cube_ptr[j]
 			if (kx<kmax_two_thirds):
 				mu = mu - 1.5*phi_sq_ptr[j]
 
-			phi_ptr[j] += dt*(phi_nl_ptr[j]-D1*ksq*mu) 
-			f_ptr[j] +=  dt*(f_nl_ptr[j]-(D2*ksq+k)*f_ptr[j]) 
-
-			phi_factor = sqrt(X*(l+ksq*D1)*epsilon*dt) # noise prefactor as a result of FT 
-			f_factor = sqrt(X*(g+ksq*D2)*epsilon*dt)
-
-			phi_ptr[j] += phi_factor*dW_phi_ptr[j]
-			f_ptr[j] += f_factor*dW_f_ptr[j]
+			phi_ptr[j] = temp + dt*(phi_nl_ptr[j]-D1*ksq*mu) + phi_factor*dW_phi_ptr[j]
+			f_ptr[j] = f_ptr[j] + dt*(f_nl_ptr[j]-(D2*ksq+k)*f_ptr[j])+f_factor*dW_f_ptr[j]
 
 
 	return y_evol

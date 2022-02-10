@@ -12,12 +12,12 @@ a = 1/D1 # want the fourth order derivative term to have coeff of 1
 phi0 = 0.1
 n = 4
 
-l = 5e-5
+l = 3e-5
 g = l
 k = l
 v0 = 10*l
 
-epsilon = 1e-3
+epsilon = 1e-2
 
 # simulation parameters
 X = 128
@@ -26,7 +26,7 @@ n_batches = 100
 phi_init = 0.5
 f_init = 1
 
-T = 2e5
+T = 4e5
 solver = StoEvolution1D(epsilon, D1, D2, l, g, k, a, v0, phi0, n)
 solver.initialise(X, T, dt, n_batches, phi_init, f_init)
 

@@ -5,6 +5,7 @@ from scipy.integrate import ode
 from scipy.fftpack import rfftfreq 
 import json
 import mkl_fft 
+from scipy.optimize import root_scalar
 
 class TimeEvolution: 
 
@@ -84,10 +85,23 @@ class TimeEvolution:
 		self.n_batches = params['n_batches']
 		self.step_size = params['step_size']  
 
+	def compute_uniform_ss(self): 
+		ss1 = (0, self.v0/self.k)
+		phi_bar = self._solve_phi_bar()
+		ss2 = (phi_bar, 1)
+		return ss1, ss2
+
+
+	def _solve_phi_bar(self): 
+
+		def f(phi):
+			return self._nu(phi) - self.k - self.g/2*phi
+		def fprime(phi):
+			return self._nu(phi)**(-phi/self.phi0**2) - self.g/2
+		sol = root_scalar(f, bracket=[0, 1], fprime=fprime)
+		return sol.root 
 		
-	def compute_Turing(self): 
-		phi = np.mean(self.y[-2, :self.X])
-		f = np.mean(self.y[-2, self.X])
+	def compute_eigvals(self, phi, f): 
 
 		h = self._hill_function(f)
 		h_prime = self._hill_prime(f)
@@ -97,13 +111,7 @@ class TimeEvolution:
 		J12 = self.l*phi*(2*h_prime)
 		J21 = -self.g*h+nu*(-phi/self.phi0**2)
 
-		det = J11*J22 - J12*J21
-		print(det)
-		print(J11+J22)
-		lhs = self.D1*J22+self.D2*J11 
-		rhs = 2*np.sqrt(self.D1*self.D2*det)
-
-		return lhs, rhs 
+		return np.linalg.eigvals([[J11, J12], [J21, J22]])
 
 	def evolve(self, verbose=False): 
 		self.y  = np.zeros((self.n_batches, self.size))
